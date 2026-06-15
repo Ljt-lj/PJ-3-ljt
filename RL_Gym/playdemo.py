@@ -12,9 +12,9 @@ def make_env():
     env = gym.wrappers.RecordEpisodeStatistics(env)
     env = NoopResetEnv(env, noop_max=30)
     env = MaxAndSkipEnv(env, skip=1)
-    env = gym.wrappers.ResizeObservation(env, (84, 84))
+    env = gym.wrappers.ResizeObservation(env, shape=(84, 84))
     env = gym.wrappers.GrayscaleObservation(env)
-    env = gym.wrappers.FrameStack(env, 4)
+    env = gym.wrappers.FrameStackObservation(env, 4)
     return env
 
 def manual_play():
