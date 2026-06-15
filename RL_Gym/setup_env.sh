@@ -7,13 +7,35 @@ set -euo pipefail
 PYTHON_VERSION="${PYTHON_VERSION:-3.10}"
 VENV_DIR="${VENV_DIR:-.venv}"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${SCRIPT_DIR}"
+
 echo "==> 创建虚拟环境 (Python ${PYTHON_VERSION})"
 if command -v conda &>/dev/null; then
-    conda create -n rl_gym python="${PYTHON_VERSION}" -y
     eval "$(conda shell.bash hook)"
-    conda activate rl_gym
+    if conda env list | awk '{print $1}' | grep -qx rl_gym; then
+        echo "    复用已有 conda 环境: rl_gym"
+        conda activate rl_gym
+    else
+        conda create -n rl_gym python="${PYTHON_VERSION}" -y
+        conda activate rl_gym
+    fi
 else
-    python"${PYTHON_VERSION}" -m venv "${VENV_DIR}"
+    PY_BIN=""
+    for candidate in "python${PYTHON_VERSION}" python3 python; do
+        if command -v "${candidate}" &>/dev/null; then
+            PY_BIN="${candidate}"
+            break
+        fi
+    done
+    if [[ -z "${PY_BIN}" ]]; then
+        echo "错误: 未找到可用的 Python 解释器"
+        exit 1
+    fi
+    echo "    使用解释器: ${PY_BIN}"
+    if [[ ! -d "${VENV_DIR}" ]]; then
+        "${PY_BIN}" -m venv "${VENV_DIR}"
+    fi
     # shellcheck disable=SC1091
     source "${VENV_DIR}/bin/activate"
 fi

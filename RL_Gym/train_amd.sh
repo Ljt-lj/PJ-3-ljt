@@ -4,6 +4,23 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${SCRIPT_DIR}"
+
+# 自动激活 setup_env.sh 创建的虚拟环境
+if [[ -z "${VIRTUAL_ENV:-}" ]] && [[ -f "${SCRIPT_DIR}/.venv/bin/activate" ]]; then
+    # shellcheck disable=SC1091
+    source "${SCRIPT_DIR}/.venv/bin/activate"
+elif [[ -z "${CONDA_DEFAULT_ENV:-}" ]] && command -v conda &>/dev/null; then
+    eval "$(conda shell.bash hook)"
+    conda activate rl_gym 2>/dev/null || true
+fi
+
+if ! python -c "import gymnasium" &>/dev/null; then
+    echo "错误: 未安装 gymnasium。请先运行: bash setup_env.sh"
+    exit 1
+fi
+
 EXP_NAME="${EXP_NAME:-MsPacman-v5}"
 ENV_ID="${ENV_ID:-ALE/MsPacman-v5}"
 TOTAL_TIMESTEPS="${TOTAL_TIMESTEPS:-5000000}"
