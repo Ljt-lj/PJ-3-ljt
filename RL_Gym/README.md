@@ -47,7 +47,7 @@ pip install -r requirements.txt
 ```
 
 ```bash
-pip install "stable_baselines3==2.0.0a1" "gymnasium[atari,accept-rom-license]==0.28.1"  "ale-py==0.8.1"
+pip install -r requirements_train.txt
 ```
 
 ## Play

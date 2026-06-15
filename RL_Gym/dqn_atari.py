@@ -134,7 +134,7 @@ if __name__ == "__main__":
     if sb3.__version__ < "2.0":
         raise ValueError(
             """On going migration: run the following command to install new dependencies
-        pip install "stable_baselines3==2.0.0a1" "gymnasium[atari,accept-rom-license]==0.28.1"  "ale-py==0.8.1"
+        pip install -r requirements_train.txt
         """
         )
     

@@ -40,10 +40,9 @@ else
     source "${VENV_DIR}/bin/activate"
 fi
 
-echo "==> 安装基础依赖"
+echo "==> 安装训练依赖（requirements_train.txt）"
 pip install --upgrade pip wheel
-pip install -r requirements.txt
-pip install "stable_baselines3==2.0.0a1" "gymnasium[atari,accept-rom-license]==0.28.1" "ale-py==0.8.1"
+pip install -r requirements_train.txt
 
 # AMD GPU (ROCm): 若云端已预装 ROCm PyTorch 可跳过；否则按 ROCm 版本安装，例如：
 # pip install torch --index-url https://download.pytorch.org/whl/rocm6.0
