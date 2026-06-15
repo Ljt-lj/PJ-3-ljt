@@ -40,16 +40,23 @@ else
     source "${VENV_DIR}/bin/activate"
 fi
 
-echo "==> 安装训练依赖（requirements_train.txt）"
+echo "==> 安装训练依赖（requirements_train.txt，先跳过 torch）"
 pip install --upgrade pip wheel
-pip install -r requirements_train.txt
+grep -v '^torch' requirements_train.txt > /tmp/requirements_no_torch.txt
+pip install -r /tmp/requirements_no_torch.txt
 
-# AMD GPU (ROCm): 若云端已预装 ROCm PyTorch 可跳过；否则按 ROCm 版本安装，例如：
-# pip install torch --index-url https://download.pytorch.org/whl/rocm6.0
-if [[ "${USE_ROCM:-0}" == "1" ]]; then
-    ROCM_INDEX="${ROCM_INDEX:-https://download.pytorch.org/whl/rocm6.0}"
-    echo "==> 安装 ROCm 版 PyTorch: ${ROCM_INDEX}"
+# 按 GPU 类型安装 PyTorch
+if command -v rocm-smi &>/dev/null; then
+    ROCM_INDEX="${ROCM_INDEX:-https://download.pytorch.org/whl/rocm6.3}"
+    echo "==> 检测到 AMD GPU (ROCm)，安装 PyTorch: ${ROCM_INDEX}"
     pip install torch --index-url "${ROCM_INDEX}"
+elif command -v nvidia-smi &>/dev/null; then
+    CUDA_INDEX="${CUDA_INDEX:-https://download.pytorch.org/whl/cu124}"
+    echo "==> 检测到 NVIDIA GPU，安装 PyTorch: ${CUDA_INDEX}"
+    pip install torch --index-url "${CUDA_INDEX}"
+else
+    echo "==> 未检测到 GPU，安装 CPU 版 PyTorch"
+    pip install torch
 fi
 
 echo "==> 检测 GPU"
