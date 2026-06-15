@@ -43,12 +43,10 @@ git clone https://github.com/AI-FDU/DQN-Atari_Games.git
 2. Install the required dependencies:
 
 ```bash
-pip install -r requirements.txt
-```
-
-```bash
 pip install -r requirements_train.txt
 ```
+
+> 说明：`gymnasium 0.28` 依赖已下架的 `ale-py 0.8.x`，请使用 `requirements_train.txt`（`gymnasium>=1.0` + `ale-py>=0.10`）。
 
 ## Play
 

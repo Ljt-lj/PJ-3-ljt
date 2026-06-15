@@ -1,9 +1,9 @@
-# 云端训练最小依赖（避免 requirements.txt 中已下架的旧版本）
+# 云端训练依赖（gymnasium 1.x + ale-py 原生 Atari，避免 shimmy/ale-py 0.8 冲突）
 torch>=1.12.1
 numpy>=1.21.6,<2
-gymnasium[atari,accept-rom-license]==0.28.1
-ale-py>=0.9.1,<0.11
-stable-baselines3==2.0.0a1
+gymnasium>=1.0.0
+ale-py>=0.10.0
+stable-baselines3>=2.3.2
 tensorboard>=2.11
 opencv-python
 moviepy

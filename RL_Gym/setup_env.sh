@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # RL实践 - 环境安装脚本（Linux 云端 / AMD GPU）
-# 推荐 Python 3.8~3.10（requirements.txt 要求 < 3.11）
+# 推荐 Python 3.10~3.12
 
 set -euo pipefail
 
@@ -59,6 +59,16 @@ print(f"PyTorch: {torch.__version__}")
 print(f"CUDA/ROCm available: {torch.cuda.is_available()}")
 if torch.cuda.is_available():
     print(f"Device: {torch.cuda.get_device_name(0)}")
+PY
+
+echo "==> 验证 Atari 环境"
+python - <<'PY'
+import ale_py
+import gymnasium as gym
+
+env = gym.make("ALE/MsPacman-v5")
+print("Atari env OK:", env.spec.id)
+env.close()
 PY
 
 echo "==> 验证 QNetwork 前向传播"

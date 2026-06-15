@@ -5,6 +5,7 @@ import time
 from distutils.util import strtobool
 
 import gymnasium as gym
+import ale_py  # 注册 ALE/Atari 环境（gymnasium>=1.0 必须）
 import numpy as np
 import torch
 import torch.nn as nn

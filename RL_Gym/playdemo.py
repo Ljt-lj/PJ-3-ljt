@@ -1,5 +1,6 @@
 import pygame
 import gymnasium as gym
+import ale_py  # 注册 ALE/Atari 环境
 from stable_baselines3.common.atari_wrappers import (
     MaxAndSkipEnv,
     NoopResetEnv
