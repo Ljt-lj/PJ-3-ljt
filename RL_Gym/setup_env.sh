@@ -33,8 +33,18 @@ else
         exit 1
     fi
     echo "    使用解释器: ${PY_BIN}"
-    if [[ ! -d "${VENV_DIR}" ]]; then
-        "${PY_BIN}" -m venv "${VENV_DIR}"
+    if [[ ! -f "${VENV_DIR}/bin/activate" ]]; then
+        if [[ -d "${VENV_DIR}" ]]; then
+            echo "    删除损坏的虚拟环境: ${VENV_DIR}"
+            rm -rf "${VENV_DIR}"
+        fi
+        echo "    创建虚拟环境: ${VENV_DIR}"
+        if ! "${PY_BIN}" -m venv "${VENV_DIR}"; then
+            echo "错误: 无法创建虚拟环境。Debian/Ubuntu 可尝试: apt install python3-venv"
+            exit 1
+        fi
+    else
+        echo "    复用已有虚拟环境: ${VENV_DIR}"
     fi
     # shellcheck disable=SC1091
     source "${VENV_DIR}/bin/activate"
