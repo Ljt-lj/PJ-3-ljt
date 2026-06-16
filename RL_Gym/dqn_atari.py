@@ -1,6 +1,7 @@
 import argparse
 import os
 import random
+import sys
 import time
 from distutils.util import strtobool
 
@@ -11,6 +12,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from tqdm import tqdm
 from stable_baselines3.common.atari_wrappers import (
     ClipRewardEnv,
     EpisodicLifeEnv,
@@ -172,9 +174,18 @@ if __name__ == "__main__":
         handle_timeout_termination=False
     )
     start_time = time.time()
+    last_return = None
+    last_loss = None
 
     obs, _ = envs.reset(seed=args.seed)
-    for global_step in range(args.total_timesteps):
+    progress = tqdm(
+        range(args.total_timesteps),
+        desc="DQN Training",
+        unit="step",
+        mininterval=1.0,
+        file=sys.stdout,
+    )
+    for global_step in progress:
         epsilon = linear_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps, global_step)
         if random.random() < epsilon:
             actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
@@ -188,7 +199,8 @@ if __name__ == "__main__":
             for info in infos["final_info"]:
                 if "episode" not in info:
                     continue
-                print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+                last_return = info["episode"]["r"]
+                tqdm.write(f"global_step={global_step}, episodic_return={last_return}")
 
         real_next_obs = next_obs.copy()
         for idx, d in enumerate(truncated):
@@ -206,10 +218,17 @@ if __name__ == "__main__":
                     td_target = data.rewards.flatten() + args.gamma * target_max * (1 - data.dones.flatten())
                 old_val = q_network(data.observations).gather(1, data.actions).squeeze()
                 loss = F.mse_loss(td_target, old_val)
+                last_loss = float(loss.item())
 
                 if global_step % 100 == 0:
-                    print("SPS:", int(global_step / (time.time() - start_time)))
- 
+                    sps = int(global_step / (time.time() - start_time))
+                    postfix = {"sps": sps}
+                    if last_return is not None:
+                        postfix["return"] = f"{last_return:.0f}"
+                    if last_loss is not None:
+                        postfix["loss"] = f"{last_loss:.4f}"
+                    progress.set_postfix(postfix)
+
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -219,6 +238,8 @@ if __name__ == "__main__":
                     target_network_param.data.copy_(
                         args.tau * q_network_param.data + (1.0 - args.tau) * target_network_param.data
                     )
+
+    progress.close()
 
     if args.save_model:
         model_dir = os.path.join("runs", run_name)

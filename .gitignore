@@ -5,4 +5,9 @@ venv/
 runs/
 videos/
 *.pth
+# 训练日志与心跳 (RL_Gym)
+RL_Gym/logs/
+RL_Gym/.train.pid
+RL_Gym/.keepalive.pid
+RL_Gym/.train_heartbeat
 .DS_Store
