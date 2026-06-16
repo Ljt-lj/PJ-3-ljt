@@ -50,32 +50,52 @@ else
     source "${VENV_DIR}/bin/activate"
 fi
 
+install_torch() {
+    local index_url="$1"
+    local label="$2"
+    echo "==> 安装 ${label} PyTorch: ${index_url}"
+    pip uninstall -y torch torchvision torchaudio 2>/dev/null || true
+    pip install torch --index-url "${index_url}"
+}
+
 echo "==> 安装训练依赖（requirements_train.txt，先跳过 torch）"
 pip install --upgrade pip wheel
 grep -v '^torch' requirements_train.txt > /tmp/requirements_no_torch.txt
 pip install -r /tmp/requirements_no_torch.txt
 
-# 按 GPU 类型安装 PyTorch
+# 其他依赖可能已拉入错误版本的 torch，先卸载再按 GPU 类型重装
 if command -v rocm-smi &>/dev/null; then
-    ROCM_INDEX="${ROCM_INDEX:-https://download.pytorch.org/whl/rocm6.3}"
-    echo "==> 检测到 AMD GPU (ROCm)，安装 PyTorch: ${ROCM_INDEX}"
-    pip install torch --index-url "${ROCM_INDEX}"
+    install_torch "${ROCM_INDEX:-https://download.pytorch.org/whl/rocm6.3}" "AMD ROCm"
 elif command -v nvidia-smi &>/dev/null; then
-    CUDA_INDEX="${CUDA_INDEX:-https://download.pytorch.org/whl/cu124}"
-    echo "==> 检测到 NVIDIA GPU，安装 PyTorch: ${CUDA_INDEX}"
-    pip install torch --index-url "${CUDA_INDEX}"
+    install_torch "${CUDA_INDEX:-https://download.pytorch.org/whl/cu124}" "NVIDIA CUDA"
 else
     echo "==> 未检测到 GPU，安装 CPU 版 PyTorch"
+    pip uninstall -y torch torchvision torchaudio 2>/dev/null || true
     pip install torch
 fi
 
 echo "==> 检测 GPU"
 python - <<'PY'
+import shutil
+import sys
 import torch
+
 print(f"PyTorch: {torch.__version__}")
 print(f"CUDA/ROCm available: {torch.cuda.is_available()}")
 if torch.cuda.is_available():
     print(f"Device: {torch.cuda.get_device_name(0)}")
+
+has_rocm = shutil.which("rocm-smi") is not None
+has_nvidia = shutil.which("nvidia-smi") is not None
+version = torch.__version__
+
+if has_rocm and "+cu" in version:
+    print("错误: 机器是 AMD ROCm，但安装了 NVIDIA CUDA 版 PyTorch。", file=sys.stderr)
+    print("请执行: pip uninstall -y torch && pip install torch --index-url https://download.pytorch.org/whl/rocm6.3", file=sys.stderr)
+    sys.exit(1)
+if has_rocm and not torch.cuda.is_available():
+    print("警告: 检测到 ROCm GPU，但 torch.cuda.is_available() 为 False。", file=sys.stderr)
+    print("可尝试: pip install torch --index-url https://download.pytorch.org/whl/rocm6.2", file=sys.stderr)
 PY
 
 echo "==> 验证 Atari 环境"

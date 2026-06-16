@@ -21,6 +21,22 @@ if ! python -c "import gymnasium" &>/dev/null; then
     exit 1
 fi
 
+if ! python - <<'PY'; then
+    exit 1
+fi
+import shutil
+import sys
+import torch
+
+if shutil.which("rocm-smi") and ("+cu" in torch.__version__ or not torch.cuda.is_available()):
+    print("错误: AMD ROCm 机器上未检测到可用的 GPU 版 PyTorch。", file=sys.stderr)
+    print(f"当前版本: {torch.__version__}, cuda available: {torch.cuda.is_available()}", file=sys.stderr)
+    print("请执行:", file=sys.stderr)
+    print("  pip uninstall -y torch torchvision torchaudio", file=sys.stderr)
+    print("  pip install torch --index-url https://download.pytorch.org/whl/rocm6.3", file=sys.stderr)
+    sys.exit(1)
+PY
+
 EXP_NAME="${EXP_NAME:-MsPacman-v5}"
 ENV_ID="${ENV_ID:-ALE/MsPacman-v5}"
 TOTAL_TIMESTEPS="${TOTAL_TIMESTEPS:-5000000}"

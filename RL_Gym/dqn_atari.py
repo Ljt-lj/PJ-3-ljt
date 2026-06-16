@@ -140,7 +140,8 @@ if __name__ == "__main__":
         )
     
     args = parse_args()
-    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    safe_env_id = args.env_id.replace("/", "_").replace("\\", "_")
+    run_name = f"{safe_env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
 
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -220,7 +221,9 @@ if __name__ == "__main__":
                     )
 
     if args.save_model:
-        model_path = f"runs/{run_name}/{args.exp_name}.pth"
+        model_dir = os.path.join("runs", run_name)
+        os.makedirs(model_dir, exist_ok=True)
+        model_path = os.path.join(model_dir, f"{args.exp_name}.pth")
         torch.save(q_network.state_dict(), model_path)
         print(f"model saved to {model_path}")
 
