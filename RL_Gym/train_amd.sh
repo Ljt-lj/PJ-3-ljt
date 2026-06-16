@@ -21,9 +21,7 @@ if ! python -c "import gymnasium" &>/dev/null; then
     exit 1
 fi
 
-if ! python - <<'PY'; then
-    exit 1
-fi
+if ! python - <<'PY'
 import shutil
 import sys
 import torch
@@ -36,6 +34,9 @@ if shutil.which("rocm-smi") and ("+cu" in torch.__version__ or not torch.cuda.is
     print("  pip install torch --index-url https://download.pytorch.org/whl/rocm6.3", file=sys.stderr)
     sys.exit(1)
 PY
+then
+    exit 1
+fi
 
 EXP_NAME="${EXP_NAME:-MsPacman-v5}"
 ENV_ID="${ENV_ID:-ALE/MsPacman-v5}"
