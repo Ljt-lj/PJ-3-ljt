@@ -1,0 +1,69 @@
+{
+  "generated_at": "2026-06-18T19:56:45",
+  "model_path": "runs/ALE_MsPacman-v5__MsPacman-v5__1__1781765213/MsPacman-v5.pth",
+  "submit_video": "submission/pacman_submit.mp4",
+  "device": "cuda",
+  "gpu_name": "AMD Radeon Graphics",
+  "pytorch_version": "2.9.1+rocm6.3",
+  "gymnasium_version": "1.2.3",
+  "network": {
+    "input": "4x84x84 (frame stack, grayscale)",
+    "conv1": "Conv2d(4,32,k=8,s=4)+ReLU",
+    "conv2": "Conv2d(32,64,k=4,s=2)+ReLU",
+    "conv3": "Conv2d(64,64,k=3,s=1)+ReLU",
+    "fc": "Linear(3136,512)+ReLU -> Linear(512, num_actions)"
+  },
+  "hyperparameters": {
+    "env_id": "ALE/MsPacman-v5",
+    "exp_name": "MsPacman-v5",
+    "total_timesteps": 5000000,
+    "buffer_size": 400000,
+    "learning_rate": 0.0001,
+    "batch_size": 32,
+    "gamma": 0.99,
+    "learning_starts": 80000,
+    "train_frequency": 4,
+    "target_network_frequency": 1000,
+    "start_e": 1.0,
+    "end_e": 0.01,
+    "exploration_fraction": 0.1,
+    "epsilon_eval": 0.05
+  },
+  "evaluation": {
+    "episodes": 10,
+    "returns": [
+      118.0,
+      4.0,
+      5.0,
+      93.0,
+      20.0,
+      12.0,
+      95.0,
+      19.0,
+      8.0,
+      114.0
+    ],
+    "lengths": [
+      164,
+      29,
+      59,
+      131,
+      38,
+      75,
+      157,
+      38,
+      53,
+      148
+    ],
+    "mean_return": 48.79999923706055,
+    "max_return": 118.0,
+    "min_return": 4.0,
+    "std_return": 46.6793327331543
+  },
+  "submit_episode": {
+    "seed": 3,
+    "return": 127.0,
+    "video_file": "submission/pacman_submit.mp4",
+    "length": 180
+  }
+}
