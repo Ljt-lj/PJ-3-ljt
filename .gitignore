@@ -10,4 +10,5 @@ RL_Gym/logs/
 RL_Gym/.train.pid
 RL_Gym/.keepalive.pid
 RL_Gym/.train_heartbeat
+RL_Gym/submission/
 .DS_Store
