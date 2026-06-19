@@ -51,6 +51,8 @@ def parse_args():
     parser.add_argument("--output-dir", type=str, default="submission")
     parser.add_argument("--run-name", type=str, default="submit-best")
     parser.add_argument("--skip-video", action="store_true", help="skip video recording (score/report only)")
+    parser.add_argument("--max-steps", type=int, default=50000, help="max steps per episode (safety limit)")
+    parser.add_argument("--log-every", type=int, default=500, help="print progress every N steps (0=off)")
     return parser.parse_args()
 
 
@@ -63,9 +65,17 @@ def find_latest_model():
     return paths[-1]
 
 
-def run_episode(envs, model, device, seed, epsilon=0.0):
+def run_episode(envs, model, device, seed, epsilon=0.0, max_steps=50000, log_every=500):
     obs, _ = envs.reset(seed=seed)
+    steps = 0
     while True:
+        steps += 1
+        if log_every and steps % log_every == 0:
+            tqdm.write(f"    step {steps} ...", file=sys.stdout)
+        if steps > max_steps:
+            tqdm.write(f"    reached max_steps={max_steps}, stopping episode")
+            return 0.0, max_steps
+
         if random.random() < epsilon:
             actions = np.array([envs.single_action_space.sample()])
         else:
@@ -79,13 +89,17 @@ def run_episode(envs, model, device, seed, epsilon=0.0):
                     return float(info["episode"]["r"]), int(info["episode"]["l"])
 
 
-def evaluate_all(model, device, env_id, episodes, epsilon, desc="eval"):
+def evaluate_all(model, device, env_id, episodes, epsilon, desc="eval", max_steps=50000, log_every=500):
     envs = gym.vector.SyncVectorEnv(
         [make_env(env_id, 0, 0, False, "eval-score")]
     )
     returns, lengths = [], []
     for i in tqdm(range(episodes), desc=desc, unit="ep"):
-        score, length = run_episode(envs, model, device, seed=i, epsilon=epsilon)
+        tqdm.write(f"  starting {desc} episode {i} ...")
+        score, length = run_episode(
+            envs, model, device, seed=i, epsilon=epsilon,
+            max_steps=max_steps, log_every=log_every,
+        )
         returns.append(score)
         lengths.append(length)
         tqdm.write(f"  {desc} episode={i}, return={score:.1f}, length={length}")
@@ -93,14 +107,17 @@ def evaluate_all(model, device, env_id, episodes, epsilon, desc="eval"):
     return returns, lengths
 
 
-def find_best_seed(model, device, env_id, seed_probes, epsilon=0.0):
+def find_best_seed(model, device, env_id, seed_probes, epsilon=0.0, max_steps=50000, log_every=0):
     envs = gym.vector.SyncVectorEnv(
         [make_env(env_id, 0, 0, False, "seed-search")]
     )
     best_seed, best_score, best_length = 0, -float("inf"), 0
     top_scores = []
     for seed in tqdm(range(seed_probes), desc="seed search", unit="seed"):
-        score, length = run_episode(envs, model, device, seed=seed, epsilon=epsilon)
+        score, length = run_episode(
+            envs, model, device, seed=seed, epsilon=epsilon,
+            max_steps=max_steps, log_every=log_every,
+        )
         top_scores.append((score, seed, length))
         if score > best_score:
             best_seed, best_score, best_length = seed, score, length
@@ -244,17 +261,20 @@ def main():
 
     print("\n==> Phase 1: evaluate episodes (epsilon={})".format(args.epsilon), flush=True)
     eval_returns, eval_lengths = evaluate_all(
-        model, device, args.env_id, args.eval_episodes, args.epsilon, desc="eval-eps"
+        model, device, args.env_id, args.eval_episodes, args.epsilon, desc="eval-eps",
+        max_steps=args.max_steps, log_every=args.log_every,
     )
 
     print("\n==> Phase 1b: greedy evaluate (epsilon=0)", flush=True)
     greedy_returns, _ = evaluate_all(
-        model, device, args.env_id, args.greedy_episodes, 0.0, desc="eval-greedy"
+        model, device, args.env_id, args.greedy_episodes, 0.0, desc="eval-greedy",
+        max_steps=args.max_steps, log_every=args.log_every,
     )
 
     print("\n==> Phase 2: find best seed for submit video ({} seeds)".format(args.seed_probes), flush=True)
     best_seed, best_score, _ = find_best_seed(
-        model, device, args.env_id, args.seed_probes, epsilon=0.0
+        model, device, args.env_id, args.seed_probes, epsilon=0.0,
+        max_steps=args.max_steps, log_every=0,
     )
 
     print("\n==> Phase 3: record submit video")
