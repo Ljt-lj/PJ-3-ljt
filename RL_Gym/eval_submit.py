@@ -43,11 +43,13 @@ def parse_args():
     parser.add_argument("--model-path", type=str, default="", help="path to .pth weights (auto-detect latest if empty)")
     parser.add_argument("--env-id", type=str, default=DEFAULT_HPARAMS["env_id"])
     parser.add_argument("--eval-episodes", type=int, default=10)
-    parser.add_argument("--seed-probes", type=int, default=20, help="seeds to search for best video episode")
-    parser.add_argument("--epsilon", type=float, default=0.05)
+    parser.add_argument("--seed-probes", type=int, default=100, help="seeds to search for best video episode")
+    parser.add_argument("--epsilon", type=float, default=0.05, help="epsilon for standard eval (match training)")
+    parser.add_argument("--greedy-episodes", type=int, default=10, help="extra greedy eval episodes (epsilon=0)")
     parser.add_argument("--cuda", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--output-dir", type=str, default="submission")
     parser.add_argument("--run-name", type=str, default="submit-best")
+    parser.add_argument("--skip-video", action="store_true", help="skip video recording (score/report only)")
     return parser.parse_args()
 
 
@@ -62,24 +64,18 @@ def find_latest_model():
 
 def run_episode(envs, model, device, seed, epsilon=0.0):
     obs, _ = envs.reset(seed=seed)
-    done = False
-    total_reward = 0.0
-    steps = 0
-    while not done:
+    while True:
         if random.random() < epsilon:
             actions = np.array([envs.single_action_space.sample()])
         else:
             with torch.no_grad():
                 q_values = model(torch.Tensor(obs).to(device))
                 actions = torch.argmax(q_values, dim=1).cpu().numpy()
-        obs, rewards, terminated, truncated, infos = envs.step(actions)
-        total_reward += float(rewards[0])
-        steps += 1
-        done = bool(terminated[0] or truncated[0])
-    length = steps
-    if "final_info" in infos and infos["final_info"][0] and "episode" in infos["final_info"][0]:
-        length = infos["final_info"][0]["episode"]["l"]
-    return total_reward, length
+        obs, _, _, _, infos = envs.step(actions)
+        if "final_info" in infos:
+            for info in infos["final_info"]:
+                if info is not None and "episode" in info:
+                    return float(info["episode"]["r"]), int(info["episode"]["l"])
 
 
 def evaluate_all(model, device, env_id, episodes, epsilon):
@@ -96,17 +92,21 @@ def evaluate_all(model, device, env_id, episodes, epsilon):
     return returns, lengths
 
 
-def find_best_seed(model, device, env_id, seed_probes, epsilon):
+def find_best_seed(model, device, env_id, seed_probes, epsilon=0.0):
     envs = gym.vector.SyncVectorEnv(
         [make_env(env_id, 0, 0, False, "seed-search")]
     )
     best_seed, best_score, best_length = 0, -float("inf"), 0
+    top_scores = []
     for seed in range(seed_probes):
-        score, length = run_episode(envs, model, device, seed=seed, epsilon=0.0)
+        score, length = run_episode(envs, model, device, seed=seed, epsilon=epsilon)
+        top_scores.append((score, seed, length))
         if score > best_score:
             best_seed, best_score, best_length = seed, score, length
     envs.close()
+    top_scores.sort(reverse=True)
     print(f"best_seed={best_seed}, return={best_score:.1f}, length={best_length}")
+    print("top5 seeds:", [(s, sd) for s, sd, _ in top_scores[:5]])
     return best_seed, best_score, best_length
 
 
@@ -127,8 +127,9 @@ def record_submit_video(model, device, env_id, seed, run_name):
     return videos[-1], score, length
 
 
-def build_report(args, model_path, eval_returns, eval_lengths, best_seed, video_score, video_path, device):
+def build_report(args, model_path, eval_returns, eval_lengths, greedy_returns, best_seed, video_score, video_path, device):
     arr = np.array(eval_returns, dtype=np.float32)
+    greedy_arr = np.array(greedy_returns, dtype=np.float32) if greedy_returns else arr
     report = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "model_path": model_path,
@@ -153,6 +154,10 @@ def build_report(args, model_path, eval_returns, eval_lengths, best_seed, video_
             "max_return": float(arr.max()),
             "min_return": float(arr.min()),
             "std_return": float(arr.std()),
+            "greedy_episodes": args.greedy_episodes,
+            "greedy_returns": [float(x) for x in greedy_returns],
+            "greedy_mean_return": float(greedy_arr.mean()),
+            "greedy_max_return": float(greedy_arr.max()),
         },
         "submit_episode": {
             "seed": best_seed,
@@ -192,8 +197,10 @@ def write_markdown_report(report, path):
         "",
         "## 4. 评估结果",
         f"- 评估局数: {ev['episodes']}",
-        f"- 平均得分: **{ev['mean_return']:.1f}**",
-        f"- 最高得分: **{ev['max_return']:.1f}**",
+        f"- 平均得分 (eps={hp['epsilon_eval']}): **{ev['mean_return']:.1f}**",
+        f"- 最高得分 (eps={hp['epsilon_eval']}): **{ev['max_return']:.1f}**",
+        f"- 贪心最高得分 (eps=0): **{ev['greedy_max_return']:.1f}**",
+        f"- 贪心平均得分 (eps=0): {ev['greedy_mean_return']:.1f}",
         f"- 最低得分: {ev['min_return']:.1f}",
         f"- 标准差: {ev['std_return']:.1f}",
         f"- 各局得分: {ev['returns']}",
@@ -234,29 +241,40 @@ def main():
     model.eval()
     probe_envs.close()
 
-    print("\n==> Phase 1: evaluate episodes")
+    print("\n==> Phase 1: evaluate episodes (epsilon={})".format(args.epsilon))
     eval_returns, eval_lengths = evaluate_all(
         model, device, args.env_id, args.eval_episodes, args.epsilon
     )
 
+    print("\n==> Phase 1b: greedy evaluate (epsilon=0)")
+    greedy_returns, _ = evaluate_all(
+        model, device, args.env_id, args.greedy_episodes, 0.0
+    )
+
     print("\n==> Phase 2: find best seed for submit video")
-    best_seed, _, _ = find_best_seed(
+    best_seed, best_score, _ = find_best_seed(
         model, device, args.env_id, args.seed_probes, epsilon=0.0
     )
 
     print("\n==> Phase 3: record submit video")
-    raw_video, video_score, video_length = record_submit_video(
-        model, device, args.env_id, best_seed, args.run_name
-    )
-
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    submit_video = out_dir / "pacman_submit.mp4"
-    shutil.copy2(raw_video, submit_video)
+    submit_video_path = out_dir / "pacman_submit.mp4"
+
+    if args.skip_video:
+        video_score = best_score
+        video_length = 0
+        submit_video_path = ""
+        print("  skipped (--skip-video), using best_seed score")
+    else:
+        raw_video, video_score, video_length = record_submit_video(
+            model, device, args.env_id, best_seed, args.run_name
+        )
+        shutil.copy2(raw_video, submit_video_path)
 
     report = build_report(
-        args, model_path, eval_returns, eval_lengths,
-        best_seed, video_score, str(submit_video), device
+        args, model_path, eval_returns, eval_lengths, greedy_returns,
+        best_seed, video_score, str(submit_video_path), device
     )
     report["submit_episode"]["length"] = int(video_length)
 
@@ -266,11 +284,12 @@ def main():
     write_markdown_report(report, md_path)
 
     print("\n==> Done")
-    print(f"  submit video : {submit_video}")
+    print(f"  submit video : {submit_video_path or '(skipped)'}")
     print(f"  report json  : {json_path}")
     print(f"  report md    : {md_path}")
     print(f"  mean return  : {report['evaluation']['mean_return']:.1f}")
     print(f"  max return   : {report['evaluation']['max_return']:.1f}")
+    print(f"  greedy max   : {report['evaluation']['greedy_max_return']:.1f}")
     print(f"  video return : {video_score:.1f}")
 
 
