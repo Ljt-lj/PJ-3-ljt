@@ -16,6 +16,7 @@ import ale_py  # noqa: F401
 import gymnasium as gym
 import numpy as np
 import torch
+from tqdm import tqdm
 
 from dqn_atari import QNetwork, make_env
 
@@ -78,16 +79,16 @@ def run_episode(envs, model, device, seed, epsilon=0.0):
                     return float(info["episode"]["r"]), int(info["episode"]["l"])
 
 
-def evaluate_all(model, device, env_id, episodes, epsilon):
+def evaluate_all(model, device, env_id, episodes, epsilon, desc="eval"):
     envs = gym.vector.SyncVectorEnv(
         [make_env(env_id, 0, 0, False, "eval-score")]
     )
     returns, lengths = [], []
-    for i in range(episodes):
+    for i in tqdm(range(episodes), desc=desc, unit="ep"):
         score, length = run_episode(envs, model, device, seed=i, epsilon=epsilon)
         returns.append(score)
         lengths.append(length)
-        print(f"eval_episode={i}, return={score:.1f}, length={length}")
+        tqdm.write(f"  {desc} episode={i}, return={score:.1f}, length={length}")
     envs.close()
     return returns, lengths
 
@@ -98,7 +99,7 @@ def find_best_seed(model, device, env_id, seed_probes, epsilon=0.0):
     )
     best_seed, best_score, best_length = 0, -float("inf"), 0
     top_scores = []
-    for seed in range(seed_probes):
+    for seed in tqdm(range(seed_probes), desc="seed search", unit="seed"):
         score, length = run_episode(envs, model, device, seed=seed, epsilon=epsilon)
         top_scores.append((score, seed, length))
         if score > best_score:
@@ -241,17 +242,17 @@ def main():
     model.eval()
     probe_envs.close()
 
-    print("\n==> Phase 1: evaluate episodes (epsilon={})".format(args.epsilon))
+    print("\n==> Phase 1: evaluate episodes (epsilon={})".format(args.epsilon), flush=True)
     eval_returns, eval_lengths = evaluate_all(
-        model, device, args.env_id, args.eval_episodes, args.epsilon
+        model, device, args.env_id, args.eval_episodes, args.epsilon, desc="eval-eps"
     )
 
-    print("\n==> Phase 1b: greedy evaluate (epsilon=0)")
+    print("\n==> Phase 1b: greedy evaluate (epsilon=0)", flush=True)
     greedy_returns, _ = evaluate_all(
-        model, device, args.env_id, args.greedy_episodes, 0.0
+        model, device, args.env_id, args.greedy_episodes, 0.0, desc="eval-greedy"
     )
 
-    print("\n==> Phase 2: find best seed for submit video")
+    print("\n==> Phase 2: find best seed for submit video ({} seeds)".format(args.seed_probes), flush=True)
     best_seed, best_score, _ = find_best_seed(
         model, device, args.env_id, args.seed_probes, epsilon=0.0
     )
