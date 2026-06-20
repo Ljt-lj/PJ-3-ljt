@@ -23,6 +23,8 @@ from stable_baselines3.common.atari_wrappers import (
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
+from dqn_eval import iter_finished_episodes
+
 
 def parse_args():
     # fmt: off
@@ -86,7 +88,6 @@ def make_env(env_id, seed, idx, capture_video, run_name):
         else:
             env = gym.make(env_id)
 
-        env = gym.wrappers.RecordEpisodeStatistics(env)
         env = NoopResetEnv(env, noop_max=30)
         env = MaxAndSkipEnv(env, skip=4)
         env = EpisodicLifeEnv(env)
@@ -98,6 +99,8 @@ def make_env(env_id, seed, idx, capture_video, run_name):
         env = gym.wrappers.ResizeObservation(env, shape=(84, 84))
         env = gym.wrappers.GrayscaleObservation(env)
         env = gym.wrappers.FrameStackObservation(env, 4)
+        # Outermost: EpisodicLifeEnv marks done per life; inner placement breaks episode stats.
+        env = gym.wrappers.RecordEpisodeStatistics(env)
         env.action_space.seed(seed)
 
         return env
@@ -195,12 +198,9 @@ if __name__ == "__main__":
 
         next_obs, rewards, terminated, truncated, infos = envs.step(actions)
 
-        if "final_info" in infos:
-            for info in infos["final_info"]:
-                if "episode" not in info:
-                    continue
-                last_return = info["episode"]["r"]
-                tqdm.write(f"global_step={global_step}, episodic_return={last_return}")
+        for r, _ in iter_finished_episodes(infos, terminated, truncated):
+            last_return = r
+            tqdm.write(f"global_step={global_step}, episodic_return={last_return}")
 
         real_next_obs = next_obs.copy()
         for idx, d in enumerate(truncated):

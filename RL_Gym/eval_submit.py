@@ -19,6 +19,7 @@ import torch
 from tqdm import tqdm
 
 from dqn_atari import QNetwork, make_env
+from dqn_eval import iter_finished_episodes
 
 
 DEFAULT_HPARAMS = {
@@ -68,8 +69,9 @@ def run_dqn_eval(model, device, env_id, eval_episodes, run_name, epsilon):
     envs = gym.vector.SyncVectorEnv([make_env(env_id, 0, 0, False, run_name)])
     obs, _ = envs.reset()
     returns, lengths = [], []
+    ep_return, ep_length = 0.0, 0
     steps = 0
-    print(f"  running {eval_episodes} episodes (first result may take 2-10 min)...", flush=True)
+    print(f"  running {eval_episodes} episodes...", flush=True)
     while len(returns) < eval_episodes:
         steps += 1
         if steps % 1000 == 0:
@@ -85,18 +87,16 @@ def run_dqn_eval(model, device, env_id, eval_episodes, run_name, epsilon):
             with torch.no_grad():
                 q_values = model(torch.Tensor(obs).to(device))
                 actions = torch.argmax(q_values, dim=1).cpu().numpy()
-        obs, _, _, _, infos = envs.step(actions)
-        if "final_info" in infos:
-            for info in infos["final_info"]:
-                if info is None:
-                    continue
-                if "episode" not in info:
-                    continue
-                r = float(info["episode"]["r"])
-                l = int(info["episode"]["l"])
-                returns.append(r)
-                lengths.append(l)
-                print(f"eval_episode={len(returns)-1}, episodic_return={r}, length={l}", flush=True)
+        obs, rewards, terminated, truncated, infos = envs.step(actions)
+        ep_return += float(rewards[0])
+        ep_length += 1
+        for r, l in iter_finished_episodes(
+            infos, terminated, truncated, ep_return, ep_length
+        ):
+            returns.append(r)
+            lengths.append(l)
+            ep_return, ep_length = 0.0, 0
+            print(f"eval_episode={len(returns)-1}, episodic_return={r}, length={l}", flush=True)
     envs.close()
     return returns, lengths
 
@@ -106,6 +106,7 @@ def run_one_episode_with_seed(model, device, env_id, seed, epsilon=0.0, max_step
         [make_env(env_id, seed, 0, capture_video, run_name)]
     )
     obs, _ = envs.reset(seed=seed)
+    ep_return, ep_length = 0.0, 0
     steps = 0
     while True:
         steps += 1
@@ -118,12 +119,14 @@ def run_one_episode_with_seed(model, device, env_id, seed, epsilon=0.0, max_step
             with torch.no_grad():
                 q_values = model(torch.Tensor(obs).to(device))
                 actions = torch.argmax(q_values, dim=1).cpu().numpy()
-        obs, _, _, _, infos = envs.step(actions)
-        if "final_info" in infos:
-            for info in infos["final_info"]:
-                if info is not None and "episode" in info:
-                    envs.close()
-                    return float(info["episode"]["r"]), int(info["episode"]["l"])
+        obs, rewards, terminated, truncated, infos = envs.step(actions)
+        ep_return += float(rewards[0])
+        ep_length += 1
+        for r, l in iter_finished_episodes(
+            infos, terminated, truncated, ep_return, ep_length
+        ):
+            envs.close()
+            return r, l
 
 
 def find_best_seed(model, device, env_id, seed_probes, epsilon=0.0):
