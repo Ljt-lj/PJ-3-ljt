@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-06-18T22:07:35",
-  "model_path": "runs\\ALE_MsPacman-v5__MsPacman-v5__1__1781765213\\MsPacman-v5.pth",
-  "submit_video": "",
-  "device": "cpu",
-  "gpu_name": "CPU",
-  "pytorch_version": "2.9.1+cu126",
+  "generated_at": "2026-06-20T15:53:21",
+  "model_path": "runs/ALE_MsPacman-v5__MsPacman-v5__1__1781765213/MsPacman-v5.pth",
+  "submit_video": "submission/pacman_submit.mp4",
+  "device": "cuda",
+  "gpu_name": "AMD Radeon Graphics",
+  "pytorch_version": "2.9.1+rocm6.3",
   "gymnasium_version": "1.2.3",
   "network": {
     "input": "4x84x84 (frame stack, grayscale)",
@@ -32,53 +32,53 @@
   "evaluation": {
     "episodes": 10,
     "returns": [
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0
+      21.0,
+      29.0,
+      27.0,
+      92.0,
+      7.0,
+      18.0,
+      115.0,
+      6.0,
+      2.0,
+      65.0
     ],
     "lengths": [
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0
+      39,
+      69,
+      86,
+      134,
+      30,
+      80,
+      222,
+      63,
+      82,
+      107
     ],
-    "mean_return": 0.0,
-    "max_return": 0.0,
-    "min_return": 0.0,
-    "std_return": 0.0,
+    "mean_return": 38.20000076293945,
+    "max_return": 115.0,
+    "min_return": 2.0,
+    "std_return": 37.07505798339844,
     "greedy_episodes": 10,
     "greedy_returns": [
+      129.0,
+      7.0,
       0.0,
+      87.0,
+      17.0,
+      4.0,
+      125.0,
+      3.0,
       0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0
+      118.0
     ],
-    "greedy_mean_return": 0.0,
-    "greedy_max_return": 0.0
+    "greedy_mean_return": 49.0,
+    "greedy_max_return": 129.0
   },
   "submit_episode": {
-    "seed": 0,
-    "return": 0.0,
-    "video_file": "",
-    "length": 0
+    "seed": 20,
+    "return": 130.0,
+    "video_file": "submission/pacman_submit.mp4",
+    "length": 213
   }
 }
