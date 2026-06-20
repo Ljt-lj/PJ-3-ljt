@@ -69,8 +69,11 @@ def run_dqn_eval(model, device, env_id, eval_episodes, run_name, epsilon):
     obs, _ = envs.reset()
     returns, lengths = [], []
     steps = 0
+    print(f"  running {eval_episodes} episodes (first result may take 2-10 min)...", flush=True)
     while len(returns) < eval_episodes:
         steps += 1
+        if steps % 1000 == 0:
+            print(f"  ... step {steps}, finished {len(returns)}/{eval_episodes} episodes", flush=True)
         if steps > 200_000:
             raise RuntimeError(
                 f"eval stuck: {steps} steps without episode end. "
