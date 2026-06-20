@@ -51,7 +51,7 @@ def parse_args():
     parser.add_argument("--output-dir", type=str, default="submission")
     parser.add_argument("--run-name", type=str, default="submit-best")
     parser.add_argument("--skip-video", action="store_true", help="skip video recording (score/report only)")
-    parser.add_argument("--max-steps", type=int, default=50000, help="max steps per episode (safety limit)")
+    parser.add_argument("--max-steps", type=int, default=0, help="global step limit per eval phase (0=no limit)")
     parser.add_argument("--log-every", type=int, default=500, help="print progress every N steps (0=off)")
     return parser.parse_args()
 
@@ -65,16 +65,22 @@ def find_latest_model():
     return paths[-1]
 
 
-def run_episode(envs, model, device, seed, epsilon=0.0, max_steps=50000, log_every=500):
-    obs, _ = envs.reset(seed=seed)
+def evaluate_all(model, device, env_id, episodes, epsilon, desc="eval", max_steps=0, log_every=0):
+    """Match dqn_eval.py: auto-reset vector env, read episode stats from final_info."""
+    envs = gym.vector.SyncVectorEnv(
+        [make_env(env_id, 0, 0, False, f"{desc}-env")]
+    )
+    returns, lengths = [], []
+    obs, _ = envs.reset()
     steps = 0
-    while True:
+    pbar = tqdm(total=episodes, desc=desc, unit="ep")
+    while len(returns) < episodes:
         steps += 1
+        if max_steps and steps > max_steps:
+            tqdm.write(f"  {desc}: global step limit {max_steps}, stopping")
+            break
         if log_every and steps % log_every == 0:
-            tqdm.write(f"    step {steps} ...", file=sys.stdout)
-        if steps > max_steps:
-            tqdm.write(f"    reached max_steps={max_steps}, stopping episode")
-            return 0.0, max_steps
+            tqdm.write(f"  {desc}: step {steps}, episodes done {len(returns)}/{episodes}")
 
         if random.random() < epsilon:
             actions = np.array([envs.single_action_space.sample()])
@@ -86,42 +92,54 @@ def run_episode(envs, model, device, seed, epsilon=0.0, max_steps=50000, log_eve
         if "final_info" in infos:
             for info in infos["final_info"]:
                 if info is not None and "episode" in info:
-                    return float(info["episode"]["r"]), int(info["episode"]["l"])
-
-
-def evaluate_all(model, device, env_id, episodes, epsilon, desc="eval", max_steps=50000, log_every=500):
-    envs = gym.vector.SyncVectorEnv(
-        [make_env(env_id, 0, 0, False, "eval-score")]
-    )
-    returns, lengths = [], []
-    for i in tqdm(range(episodes), desc=desc, unit="ep"):
-        tqdm.write(f"  starting {desc} episode {i} ...")
-        score, length = run_episode(
-            envs, model, device, seed=i, epsilon=epsilon,
-            max_steps=max_steps, log_every=log_every,
-        )
-        returns.append(score)
-        lengths.append(length)
-        tqdm.write(f"  {desc} episode={i}, return={score:.1f}, length={length}")
+                    r = float(info["episode"]["r"])
+                    l = int(info["episode"]["l"])
+                    returns.append(r)
+                    lengths.append(l)
+                    pbar.update(1)
+                    tqdm.write(f"  {desc} episode={len(returns)-1}, return={r:.1f}, length={l}")
+    pbar.close()
     envs.close()
+    if len(returns) < episodes:
+        tqdm.write(f"  warning: only collected {len(returns)}/{episodes} episodes")
     return returns, lengths
 
 
-def find_best_seed(model, device, env_id, seed_probes, epsilon=0.0, max_steps=50000, log_every=0):
+def run_one_episode_with_seed(model, device, env_id, seed, epsilon=0.0, max_steps=0, capture_video=False, run_name="probe"):
     envs = gym.vector.SyncVectorEnv(
-        [make_env(env_id, 0, 0, False, "seed-search")]
+        [make_env(env_id, seed, 0, capture_video, run_name)]
     )
+    obs, _ = envs.reset(seed=seed)
+    steps = 0
+    while True:
+        steps += 1
+        if max_steps and steps > max_steps:
+            envs.close()
+            return 0.0, steps
+        if random.random() < epsilon:
+            actions = np.array([envs.single_action_space.sample()])
+        else:
+            with torch.no_grad():
+                q_values = model(torch.Tensor(obs).to(device))
+                actions = torch.argmax(q_values, dim=1).cpu().numpy()
+        obs, _, _, _, infos = envs.step(actions)
+        if "final_info" in infos:
+            for info in infos["final_info"]:
+                if info is not None and "episode" in info:
+                    envs.close()
+                    return float(info["episode"]["r"]), int(info["episode"]["l"])
+
+
+def find_best_seed(model, device, env_id, seed_probes, epsilon=0.0, max_steps=0):
     best_seed, best_score, best_length = 0, -float("inf"), 0
     top_scores = []
     for seed in tqdm(range(seed_probes), desc="seed search", unit="seed"):
-        score, length = run_episode(
-            envs, model, device, seed=seed, epsilon=epsilon,
-            max_steps=max_steps, log_every=log_every,
+        score, length = run_one_episode_with_seed(
+            model, device, env_id, seed, epsilon=epsilon, max_steps=max_steps,
         )
         top_scores.append((score, seed, length))
         if score > best_score:
             best_seed, best_score, best_length = seed, score, length
-    envs.close()
     top_scores.sort(reverse=True)
     print(f"best_seed={best_seed}, return={best_score:.1f}, length={best_length}")
     print("top5 seeds:", [(s, sd) for s, sd, _ in top_scores[:5]])
@@ -133,12 +151,10 @@ def record_submit_video(model, device, env_id, seed, run_name):
     if video_dir.exists():
         shutil.rmtree(video_dir)
 
-    envs = gym.vector.SyncVectorEnv(
-        [make_env(env_id, seed, 0, True, run_name)]
+    score, length = run_one_episode_with_seed(
+        model, device, env_id, seed, epsilon=0.0,
+        capture_video=True, run_name=run_name,
     )
-    score, length = run_episode(envs, model, device, seed=seed, epsilon=0.0)
-    envs.close()
-
     videos = sorted(glob.glob(str(video_dir / "*.mp4")))
     if not videos:
         raise RuntimeError(f"no mp4 recorded under {video_dir}")
@@ -264,6 +280,8 @@ def main():
         model, device, args.env_id, args.eval_episodes, args.epsilon, desc="eval-eps",
         max_steps=args.max_steps, log_every=args.log_every,
     )
+    if not eval_returns or all(r == 0 for r in eval_returns):
+        print("WARNING: all eval returns are 0 — check model path and env setup.", flush=True)
 
     print("\n==> Phase 1b: greedy evaluate (epsilon=0)", flush=True)
     greedy_returns, _ = evaluate_all(
@@ -274,7 +292,7 @@ def main():
     print("\n==> Phase 2: find best seed for submit video ({} seeds)".format(args.seed_probes), flush=True)
     best_seed, best_score, _ = find_best_seed(
         model, device, args.env_id, args.seed_probes, epsilon=0.0,
-        max_steps=args.max_steps, log_every=0,
+        max_steps=args.max_steps,
     )
 
     print("\n==> Phase 3: record submit video")
